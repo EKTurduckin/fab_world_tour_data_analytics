@@ -173,4 +173,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-tournament_lists.csv
+PT London.twb
+pb_league/
