@@ -1,0 +1,9 @@
+display_name,url_name,draft_rounds,rounds_total,draft_rounds_start,draft_rounds_end
+"PT: London 2025","pro-tour-london",True,18,6,11
+"Nats: US 2025","us-national-championship-2025",True,18,6,11
+"PT: Singapore 2025","pro-tour-singapore-2025",True,18,6,11
+"Calling: Auckland 2025","calling-auckland-classic-constructed",False,14,,
+"BH: Lucerne 2025","battle-hardened-lucerne-2025",False,10,,
+"Calling: Kansas City 2025","calling-kansas-city-2025",False,15
+"BH: Kansas City 2025","battle-hardened-kansas-city-2025",False,10,,
+"BH: Perth 2025","battle-hardened-perth-2025-beyond-odyssey",False,9,,
