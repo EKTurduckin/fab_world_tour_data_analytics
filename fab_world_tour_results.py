@@ -25,7 +25,7 @@ class Event:
     rounds_total: int
 
     @property
-    def draft_rounds(self) -> list[int]:
+    def constructed_rounds(self) -> list[int]:
         ...
 
 
@@ -224,7 +224,7 @@ def make_player_list(pairings):
     output = []
 
     # This is O(n^2) because of the deduplication check. This is probably fine in practice
-    # for this use case, but it could be be O(n) if records were hashable and output was a set.
+    # for this use case, but it could be be O(n) if output was a set.
     for record in pairings:
         # This would be much more readable as `record.gem_id`. See comment above in `get_pairings`
         # about using a self documenting data structure.
