@@ -89,7 +89,7 @@ class Player:
         return re.search(r"^(.*?)\s*\((\d+)\)$", self.player_import).group(2)
 
 def event_entry():
-    debug_arg_string = "bulk events.csv".split()
+    # debug_arg_string = "bulk events.csv".split()
 
     def create_event_single(parsed_arguments):
         output = []
@@ -136,7 +136,7 @@ def event_entry():
     parser_manual.add_argument("-s", "--draft_start", metavar="draft_start", type=int, help="Draft starts in round ? of tournament.")
     parser_manual.add_argument("-e", "--draft_end", metavar="draft_end", type=int, help="Draft ends in round ? of tournament.")
 
-    parsed_arguments = parser.parse_args(debug_arg_string)
+    parsed_arguments = parser.parse_args()
 
     if parsed_arguments.subcommand == "bulk":
         all_events = create_events_bulk(parsed_arguments)
@@ -150,8 +150,9 @@ def get_pairings(event):
     # TODO: Add error handling
 
     for round_number in event.constructed_rounds:
+        print(f"\rGetting results round {round_number}/{event.rounds_total} for {event.display_name}", end="")
         page = requests.get(coverage_url.format(event.url_name, round_number))
-        soup = BeautifulSoup(page.text, "html")
+        soup = BeautifulSoup(page.text, "html.parser")
 
         player = soup.find_all("div", {"class":"tournament-coverage__player-hero-and-deck"})
         winner = soup.find_all("div", {"class":"tournament-coverage__result"})
@@ -186,8 +187,8 @@ def get_pairings(event):
                 gem_id=gem_id,
                 match_outcome=player_status
                 ))
-        
-    print(f"Done Adding Pairings for {event.display_name}")
+
+    print(f"\nDone getting results for {event.display_name}")
 
 def get_player_info(event):
     coverage_url = "https://fabtcg.com/en/coverage/{}/decklist/{}/"
@@ -196,7 +197,7 @@ def get_player_info(event):
         decklist_url = coverage_url.format(event.url_name, gem_id)
 
         page = requests.get(decklist_url)
-        soup = BeautifulSoup(page.text, "html")
+        soup = BeautifulSoup(page.text, "html.parser")
 
         player_info = [data.text.strip() for data in soup.find_all("td")]
         if len(player_info) > 0:
@@ -209,8 +210,8 @@ def get_player_info(event):
                 )
 
                 event.players.append(player_object)
-                print(f"\rAdded {idx+1}/{len(event.attendees)}", end="")
-    print()
+                print(f"\rCollected {idx+1}/{len(event.attendees)} decklists", end="")
+    print(f"\nDone getting decklists from {event.display_name}")
 
 def post_events_to_sql(all_events):
     cnxn = sqlite3.connect(DATABASE)
@@ -229,12 +230,12 @@ def add_card_to_player(player):
         )
 
 def post_cards_to_sql(player, event_url_name):
-    insert_sql = """Insert Into decklists ("GEM ID", Copies, Card, "Event Name") Values (?,?,?,?)"""
+    insert_sql = """Insert Into decklists ("GEM ID", Copies, Card, "Event Name", pitch) Values (?,?,?,?,?)"""
     cnxn = sqlite3.connect(DATABASE)
     cursor = cnxn.cursor()
 
     for card in player.cards:
-        cursor.execute(insert_sql, tuple((player.gem_id, card.copies, card.card_name, event_url_name)))
+        cursor.execute(insert_sql, tuple((player.gem_id, card.copies, card.card_name, event_url_name, card.pitch)))
     
     cursor.close()
     cnxn.commit()
@@ -287,17 +288,15 @@ post_events_to_sql(all_events)
 for event in all_events:
     get_pairings(event)
     get_player_info(event)
-    
+    print(f"Iterating through {event.display_name}'s players")
     for player in event.players:
         add_card_to_player(player)
         post_cards_to_sql(player, event.url_name)
+    print(f"Done adding cards to SQL for {event.display_name}")
 
     post_pairings_to_sql(event)
     post_players_to_sql(event)
+    print(f"Done posting pairings and players to SQL for {event.display_name}")
 
 export_sql_to_csv()
-
-# %%
-export_sql_to_csv()
-
-
+print("Job Done")
