@@ -1,9 +1,11 @@
-display_name,url_name,draft_rounds,rounds_total,draft_rounds_start,draft_rounds_end
-"PT: London 2025","pro-tour-london",True,18,6,11
-"Nats: US 2025","us-national-championship-2025",True,18,6,11
-"PT: Singapore 2025","pro-tour-singapore-2025",True,18,6,11
-"Calling: Auckland 2025","calling-auckland-classic-constructed",False,14,,
-"BH: Lucerne 2025","battle-hardened-lucerne-2025",False,10,,
-"Calling: Kansas City 2025","calling-kansas-city-2025",False,15
-"BH: Kansas City 2025","battle-hardened-kansas-city-2025",False,10,,
-"BH: Perth 2025","battle-hardened-perth-2025-beyond-odyssey",False,9,,
+url_name,display_name,event_type,rounds_total,draft_rounds_start,draft_rounds_end
+"pro-tour-london","Pro-Tour London 2025","Pro-Tour",18,6,11
+"us-national-championship-2025","US National Championship 2025","National Championship",18,6,11
+"pro-tour-singapore-2025","Pro-Tour Singapore","Pro Tour",18,6,11
+"calling-auckland-classic-constructed","Calling Auckland 2025","Calling",14,,
+"battle-hardened-lucerne-2025","Battle Hardened Lucerne 2025","Battle Hardened",10,,
+"calling-kansas-city-2025","Calling Kansas City 2025","Calling",15,,
+"battle-hardened-kansas-city-2025","Battle Hardened Kansas City 2025","Battle Hardened",10,,
+"battle-hardened-perth-2025-beyond-odyssey","Battle Hardened Perth 2025","Battle Hardened",9,,
+"battle-hardened-copenhagen-2025","Battle Hardened Copenhagen 2025","Battle Hardened",10,,
+"calling-copenhagen-2025","Calling Copenhagen 2025","Calling",15,,

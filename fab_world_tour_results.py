@@ -1,140 +1,164 @@
 # %%
-import pandas as pd
+import csv
 import requests
-import sqlite3
 import re
-from pathlib import Path
+import argparse
+import sqlite3
 from bs4 import BeautifulSoup
+from dataclasses import dataclass, astuple, field
 
-# %%
-database = "fab_world_tour.db"
 
+DATABASE = "fab_world_tour.db"
+
+@dataclass
+class Seat:
+    """A seat in a match of a tournament and it's outcome."""
+    event: str
+    round: int
+    table: int
+    seat: int
+    gem_id: int
+    match_outcome: str
+
+    @property
+    def table_id(self) -> int:
+        """Concat of round number and table"""
+        return self.round * 10 + self.table
+
+@dataclass
 class Event:
-    def __init__(self, name, display_name, draft_rounds, rounds_total, draft_rounds_start, draft_rounds_end):
-        self.name = name
-        self.display_name = display_name
-        self.draft_rounds = draft_rounds
-        self.draft_rounds_start = draft_rounds_start
-        self.draft_rounds_end = draft_rounds_end
-        self.rounds_total = rounds_total
+    """A Flesh and Blood tournament"""
+    url_name: str
+    display_name: str
+    event_type: str
+    rounds_total: int
+    draft_rounds_start: int
+    draft_rounds_end: int
+    pairings: list[object] = field(default_factory=list)
+    players: list[object] = field(default_factory=list) #inserting Player class
 
-        if self.draft_rounds:
-            self.constructed_rounds = [number + 1 for number in range(self.rounds_total) if not self.draft_rounds_start <= number + 1 <= self.draft_rounds_end]
-        else:
-            self.constructed_rounds = [number + 1 for number in range(self.rounds_total)]
+    @property
+    def constructed_rounds(self) -> list[int]:
+        draft_rounds = {_ for _ in range(self.draft_rounds_start, self.draft_rounds_end + 1)}
+        return [round_ for round_ in range(1, self.rounds_total + 1) if round_ not in draft_rounds]
 
-    def show(self):
-        inst_var = vars(self)
-        for name, value in inst_var.items():
-            print(f"{name}: {value}")
-
-# %%
-def direct_entry_event_creation():
-    output = []
-
-    events_being_added = user_input_int("How Many Events Are Being Added? ")
-
-    for i in range(events_being_added):
-        event_name = input("Event name found in the URL: ")
-        display_name = input("Event name to be shown: ")
-        rounds_total = user_input_int("# of rounds at the Event: ")
-        draft_rounds = user_input_bool("Rounds of draft (True/False): ")
-
-        if draft_rounds:
-            draft_rounds_start = user_input_int("First round of draft: ")
-            draft_rounds_end = user_input_int("Last round of draft: ")
-        else:
-            draft_rounds_start = None
-            draft_rounds_end = None
-
-        event = Event(
-            name = event_name,
-            display_name = display_name,
-            draft_rounds = draft_rounds,
-            rounds_total = rounds_total,
-            draft_rounds_start = draft_rounds_start,
-            draft_rounds_end = draft_rounds_end
-            )
+    @property
+    def attendees(self) -> set[int]:
+        return set(seat.gem_id for seat in self.pairings)
     
-        output.append(event)
+@dataclass
+class Card:
+    card_import: str
 
-    return output
+    def __post_init__(self):
+        self.card_split: list[str] = re.split(r" x | \(", self.card_import)
 
-def bulk_entry_event_creation(csv_path):
-    output = []
-    csv_path = Path(csv_path)
-
-    df = pd.read_csv(csv_path)
-
-    for i in range(len(df)):
-        event_name = df.loc[[i], "url_name"].item()
-        display_name = df.loc[[i], "display_name"].item()
-        rounds_total = df.loc[[i], "rounds_total"].item()
-        draft_rounds = df.loc[[i], "draft_rounds"].item()
-
-        if draft_rounds:
-            draft_rounds_start = df.loc[[i], "draft_rounds_start"].item()
-            draft_rounds_end = df.loc[[i], "draft_rounds_end"].item()
-        else:
-            draft_rounds_start = None
-            draft_rounds_end = None
-
-        event = Event(
-            name = event_name,
-            display_name = display_name,
-            draft_rounds = draft_rounds,
-            rounds_total = rounds_total,
-            draft_rounds_start = draft_rounds_start,
-            draft_rounds_end = draft_rounds_end
-            )
+    @property
+    def copies(self) -> int:
+        return int(self.card_split[0])
     
-        output.append(event)
-
-    return output
+    @property
+    def pitch(self) -> int:
+        if len(self.card_split) > 2:
+            if self.card_split[2] == "blu)":
+                return 3
+            if self.card_split[2] == "yel)":
+                return 2
+            if self.card_split[2] == "red)":
+                return 1
     
-def user_input_bool(prompt):
-    valid_input = False
+    @property  
+    def card_name(self) -> str:
+        return self.card_split[1]
+    
+@dataclass
+class Player:
+    player_import: str
+    event_date: str
+    format: str
+    hero: str
+    deck: list[str] = field(default_factory=list)
+    cards: list[object] = field(default_factory=list)
 
-    while not valid_input:
-        user_input = input(prompt).lower()
-        valid_input = user_input.startswith(("t","f"))
+    @property
+    def player_name(self) -> str:
+        return re.search(r"^(.*?)\s*\((\d+)\)$", self.player_import).group(1)
+    
+    @property
+    def gem_id(self) -> int:
+        return re.search(r"^(.*?)\s*\((\d+)\)$", self.player_import).group(2)
 
-    return user_input.startswith("t")
+def event_entry():
+    # debug_arg_string = "bulk events.csv".split()
 
-def user_input_int(prompt):
-    valid_input = False
+    def create_event_single(parsed_arguments):
+        output = []
+        draft_start = parsed_arguments.draft_start or 0
+        draft_end = parsed_arguments.draft_end or 0
 
-    while not valid_input:
-        user_input = input(prompt)
-        valid_input = user_input.isnumeric()
+        output.append(Event(parsed_arguments.name, parsed_arguments.display_name, parsed_arguments.total_rounds, draft_start, draft_end))
 
-    return int(user_input)            
+        return output
 
-def choose_bulk_direct():
-    valid_input = False
+    def create_events_bulk(parsed_arguments):
+        output = []
+        with open(parsed_arguments.file) as file:
+            reader = csv.DictReader(file)
 
-    while not valid_input:
-        user_input = input("1. Bulk Entry\n2. Direct Entry")
-        
-        if user_input not in ['1','2']:
-            valid_input = False
-        else:
-            valid_input = True
-            return user_input.startswith('1')
-        
-def get_pairings(event, constructed_rounds):
-    output = []
-    url = "https://fabtcg.com/en/coverage/{}/results/{}/"
+            for row in reader:
+                draft_start = row["draft_rounds_start"] or 0
+                draft_end = row["draft_rounds_end"] or 0
 
-    for round in constructed_rounds:
-        page = requests.get(url.format(event, round))
-        soup = BeautifulSoup(page.text, "html")
+                output.append(
+                    Event(
+                        url_name=row["url_name"],
+                        display_name=row["display_name"],
+                        event_type=row["event_type"],
+                        rounds_total=int(row["rounds_total"]),
+                        draft_rounds_start=int(draft_start),
+                        draft_rounds_end=int(draft_end)
+                    )
+                )
+
+        return output
+    
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="subcommand")
+    subparsers.required = True
+
+    parser_bulk = subparsers.add_parser("bulk")
+    parser_bulk.add_argument("file", type=str)
+
+    parser_manual = subparsers.add_parser("manual")
+    parser_manual.add_argument("name", metavar="name", type=str, help="Enter the event name found in the URL of fabtcg.com.\nex. pro-tour-london")
+    parser_manual.add_argument("display_name", metavar="display_name", type=str, help="Enter the event name as you'd like it displayed.")
+    parser_manual.add_argument("total_rounds", metavar="total_rounds", type=int, help="Number of rounds in the tournament.")
+    parser_manual.add_argument("-s", "--draft_start", metavar="draft_start", type=int, help="Draft starts in round ? of tournament.")
+    parser_manual.add_argument("-e", "--draft_end", metavar="draft_end", type=int, help="Draft ends in round ? of tournament.")
+
+    parsed_arguments = parser.parse_args()
+
+    if parsed_arguments.subcommand == "bulk":
+        all_events = create_events_bulk(parsed_arguments)
+    if parsed_arguments.subcommand == "manual":
+        all_events = create_event_single(parsed_arguments)
+
+    return all_events
+
+def get_pairings(event):
+    coverage_url = "https://fabtcg.com/en/coverage/{}/results/{}/"
+    # TODO: Add error handling
+
+    for round_number in event.constructed_rounds:
+        print(f"\rGetting results round {round_number}/{event.rounds_total} for {event.display_name}", end="")
+        page = requests.get(coverage_url.format(event.url_name, round_number))
+        soup = BeautifulSoup(page.text, "html.parser")
 
         player = soup.find_all("div", {"class":"tournament-coverage__player-hero-and-deck"})
         winner = soup.find_all("div", {"class":"tournament-coverage__result"})
 
         for idx, id in enumerate(player):
-            table = int(idx / 2) + 1
+            table = idx // 2 + 1
 
             seat = (idx % 2) + 1
 
@@ -146,7 +170,6 @@ def get_pairings(event, constructed_rounds):
             if re.search(r"(\d)", winner[table - 1].text):
                 winning_seat = int(re.search(r"(\d)", winner[table - 1].text).group(1))
             else:
-                # print(f"Round: {round} Table: {table} had a draw")
                 winning_seat = 0
 
             if winning_seat == 0:
@@ -155,96 +178,125 @@ def get_pairings(event, constructed_rounds):
                 player_status = "Win"
             else:
                 player_status = "Loss"
+            
+            event.pairings.append(Seat(
+                event=event.url_name,
+                round=round_number,
+                table=table,
+                seat=seat,
+                gem_id=gem_id,
+                match_outcome=player_status
+                ))
 
-            record = [event, round, table, seat, gem_id, player_status]
+    print(f"\nDone getting results for {event.display_name}")
 
-            output.append(record)
-
-    return output
-
-def make_player_list(pairings):
-    output = []
-
-    for record in pairings:
-        if record[4] not in output and record[4]:
-            output.append(record[4])
-
-    return output
-
-def get_decklist(event, player_list):
-    output = []
+def get_player_info(event):
     coverage_url = "https://fabtcg.com/en/coverage/{}/decklist/{}/"
 
-    for id in player_list:
-        decklist_url = coverage_url.format(event, id)
+    for idx, gem_id in enumerate(event.attendees):
+        decklist_url = coverage_url.format(event.url_name, gem_id)
 
         page = requests.get(decklist_url)
-        soup = BeautifulSoup(page.text, "html")
+        soup = BeautifulSoup(page.text, "html.parser")
 
-        if page.status_code == 200:
-            output.append([data.text.strip() for data in soup.find_all("td")])
-        else:
-            output.append([id, "Unknown", None, None, None, "Unknown"])
+        player_info = [data.text.strip() for data in soup.find_all("td")]
+        if len(player_info) > 0:
+                player_object = Player(
+                    player_import=player_info[0],
+                    event_date=player_info[1],
+                    format=player_info[3],
+                    hero=player_info[4],
+                    deck=player_info[5:]
+                )
 
-    return output
+                event.players.append(player_object)
+                print(f"\rCollected {idx+1}/{len(event.attendees)} decklists", end="")
+    print(f"\nDone getting decklists from {event.display_name}")
 
-def decklist_to_df(event, decklists):
-    decklists = pd.DataFrame.from_records(decklists)
-    decklists.index = [re.search(r"(\d+)", name).group(1) for name in decklists[0]]
+def post_events_to_sql(all_events):
+    cnxn = sqlite3.connect(DATABASE)
+    cursor = cnxn.cursor()
+    insert_sql = "INSERT INTO events (url_name, display_name, event_type, rounds_total, draft_round_start, draft_round_end) VALUES (?, ?, ?, ?, ?, ?)"
+    for event in all_events:
+        payload = tuple((event.url_name, event.display_name, event.event_type, event.rounds_total, event.draft_rounds_start, event.draft_rounds_end))
+        cursor.execute(insert_sql, payload)
+    cursor.close()
+    cnxn.commit()
 
-    participants = decklists.iloc[:,0:5].copy()
-    participants = participants.drop(2, axis=1)
-    participants = participants.rename(columns={0:"Name", 1:"Event Date", 3:"Format", 4:"Hero"})
-    participants["Event Name"] = event
+def add_card_to_player(player):
+    for card in player.deck:
+        player.cards.append(
+            Card(card)
+        )
 
-    participants.index.rename("Gem ID", inplace=True) 
+def post_cards_to_sql(player, event_url_name):
+    insert_sql = """Insert Into decklists ("GEM ID", Copies, Card, "Event Name", pitch) Values (?,?,?,?,?)"""
+    cnxn = sqlite3.connect(DATABASE)
+    cursor = cnxn.cursor()
 
-    decklists = decklists.drop([0,1,2,3,4], axis=1)
-
-    decklists = pd.melt(decklists, ignore_index=False, value_name="import name")["import name"].to_frame()
-
-    decklists[["Copies","Card"]] = decklists["import name"].str.split(" x ", expand=True)
-    decklists = decklists.drop("import name", axis=1).dropna()
-
-    decklists.index.rename("Gem ID", inplace=True)
-    decklists["Event Name"] = event
-
-    return participants, decklists
-
-def df_to_sql(dataframe, sql_table_name, index=True):
-    connection = sqlite3.connect(database)
-
-    dataframe.to_sql(sql_table_name, connection, if_exists="append", index=index)
-
-# %%
-if choose_bulk_direct():
-    events = bulk_entry_event_creation("events.csv")
-else:
-    events = direct_entry_event_creation()
-
-for event in events[1:]:
-    print(event.display_name)
-    pairings = get_pairings(event.name, event.constructed_rounds)
-    player_list = make_player_list(pairings)
-    decklists = get_decklist(event.name, player_list)
-    tournament = decklist_to_df(event.name, decklists)
-    participant_df = tournament[0]
-    decklist_df = tournament[1]
-    pairings_df = pd.DataFrame.from_records(pairings, columns=["Event", "Round","Table","Seat","Gem ID","Outcome"])
-    event_name_df = pd.DataFrame.from_records([[event.name, event.display_name]],columns=["event_url_portion", "event_name"])
+    for card in player.cards:
+        cursor.execute(insert_sql, tuple((player.gem_id, card.copies, card.card_name, event_url_name, card.pitch)))
     
+    cursor.close()
+    cnxn.commit()
 
-    df_to_sql(participant_df, "participants")
-    df_to_sql(decklist_df, "decklists")
-    df_to_sql(pairings_df, "pairings", False)
-    df_to_sql(event_name_df, "events", False)
+def post_pairings_to_sql(event):
+    insert_sql = """Insert Into pairings (Event, Round, "Table", Seat, "Gem ID", Outcome, tbl_id) Values (?,?,?,?,?,?,?)"""
+    cnxn = sqlite3.connect(DATABASE)
+    cursor = cnxn.cursor()
+
+    for seat in event.pairings:
+        payload = astuple(seat) + tuple((seat.table_id, ))
+        cursor.execute(insert_sql, payload)
+    
+    cursor.close()
+    cnxn.commit()
+
+def post_players_to_sql(event):
+    insert_sql = """Insert Into participants ("Gem ID", "Name", "Event Date", "Format", "Hero", "Event Name") Values (?,?,?,?,?,?)"""
+    cnxn = sqlite3.connect(DATABASE)
+    cursor = cnxn.cursor()
+
+    for player in event.players:
+        payload = tuple((player.gem_id, player.player_name, player.event_date, player.format, player.hero, event.url_name))
+        cursor.execute(insert_sql, payload)
+
+    cursor.close()
+    cnxn.commit()
+
+def export_sql_to_csv():
+    sql_select = {"tournament_lists": """Select gem_id, url_name, hero, card, copies From tournament_lists""", "results":"""Select url_name, round, gem_id, hero, opponent, outcome, table_id From results"""}
+
+    cnxn = sqlite3.connect(DATABASE)
+    cursor = cnxn.cursor()
+
+    for results_name, statement in sql_select.items():
+        cursor.execute(statement)
+        dataset = cursor.fetchall()
+
+        with open(f"{results_name}.csv", "w", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow([header[0] for header in cursor.description])
+            writer.writerows(dataset)
+
+    cursor.close()
 
 # %%
-# Tableau public doesn't like SQL connections, so until then I need to export to an xlsx.
-# And turns out I'm trying to add too many rows to an xlsx, so CSV we go.
-cnxn = sqlite3.connect(database)
-csv_results = pd.read_sql("Select * From csv_output", cnxn)
+all_events = event_entry()
+post_events_to_sql(all_events)
 
-csv_results.to_csv("World Tour Results 2025.csv", index=False)
+for event in all_events:
+    get_pairings(event)
+    get_player_info(event)
+    print(f"Iterating through {event.display_name}'s players")
+    for player in event.players:
+        add_card_to_player(player)
+        post_cards_to_sql(player, event.url_name)
+    print(f"Done adding cards to SQL for {event.display_name}")
 
+    post_pairings_to_sql(event)
+    post_players_to_sql(event)
+    print(f"Done posting pairings and players to SQL for {event.display_name}")
 
+export_sql_to_csv()
+print("Job Done")
